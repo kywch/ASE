@@ -31,7 +31,7 @@ import numpy as np
 import torch
 
 from isaacgym import gymapi
-from isaacgym import gymtorch
+# from isaacgym import gymtorch
 
 from env.tasks.humanoid import Humanoid, dof_to_obs
 from utils import gym_util

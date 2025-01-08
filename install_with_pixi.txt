@@ -1,0 +1,14 @@
+pixi shell
+
+cd ../isaacgym/python
+pip install -e .
+
+cd ../../ASE/rl_games
+pip install -e .
+
+pixi run build_gymtorch
+
+pixi run test_deps
+
+-----------------------
+

@@ -34,7 +34,8 @@ import env.tasks.humanoid_amp_task as humanoid_amp_task
 from utils import torch_utils
 
 from isaacgym import gymapi
-from isaacgym import gymtorch
+# from isaacgym import gymtorch
+import gymtorch
 from isaacgym.torch_utils import *
 
 class HumanoidReach(humanoid_amp_task.HumanoidAMPTask):

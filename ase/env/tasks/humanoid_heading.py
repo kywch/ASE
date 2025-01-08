@@ -34,7 +34,9 @@ import env.tasks.humanoid_amp_task as humanoid_amp_task
 from utils import torch_utils
 
 from isaacgym import gymapi
-from isaacgym import gymtorch
+# from isaacgym import gymtorch
+import gymtorch
+
 from isaacgym.torch_utils import *
 
 TAR_ACTOR_ID = 1

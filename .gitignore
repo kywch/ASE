@@ -1,8 +1,14 @@
+.pixi
+*.egg-info
+build/
+*.so
 *.pyc
-
 .vs/
 runs/
 __pycache__/
 output/
 log/
 nn/
+runs/
+wandb/
+tmp/

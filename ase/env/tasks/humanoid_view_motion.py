@@ -28,7 +28,8 @@
 
 import torch
 
-from isaacgym import gymtorch
+# from isaacgym import gymtorch
+import gymtorch
 
 from env.tasks.humanoid_amp import HumanoidAMP
 

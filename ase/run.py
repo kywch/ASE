@@ -85,9 +85,9 @@ def create_rlgpu_env(**kwargs):
     print('num_obs: {:d}'.format(env.num_obs))
     print('num_states: {:d}'.format(env.num_states))
     
-    frames = kwargs.pop('frames', 1)
-    if frames > 1:
-        env = wrappers.FrameStack(env, frames, False)
+    # frames = kwargs.pop('frames', 1)
+    # if frames > 1:
+    #     env = wrappers.FrameStack(env, frames, False)
     return env
 
 
