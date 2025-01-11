@@ -12,3 +12,4 @@ nn/
 runs/
 wandb/
 tmp/
+test/
