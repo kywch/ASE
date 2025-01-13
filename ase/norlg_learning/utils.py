@@ -19,6 +19,10 @@ numpy_to_torch_dtype_dict = {
 }
 
 
+def to_torch(x, dtype=torch.float, device="cuda:0", requires_grad=False):
+    return torch.tensor(x, dtype=dtype, device=device, requires_grad=requires_grad)
+
+
 def shape_whc_to_cwh(shape):
     # if len(shape) == 2:
     #    return (shape[1], shape[0])

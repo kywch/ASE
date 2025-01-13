@@ -6,34 +6,18 @@ import isaacgym
 import torch
 
 from rl_games.common import env_configurations
-from rl_games.algos_torch import model_builder as rlg_model_builder
-from rl_games.algos_torch import network_builder as rlg_network_builder
 
 # RLG
 from ase.learning import ase_players as rlg_ase_players
-from ase.learning import ase_models as rlg_ase_models
-from ase.learning import ase_network_builder as rlg_ase_network_builder
 
 # NO RLG
-from ase.norlg_learning.utils import RLGPUAlgoObserver, DefaultRewardsShaper
+from ase.norlg_learning.env import create_rlgpu_env
+from ase.norlg_learning.ase_players import ASEPlayer
 from ase.norlg_learning.network import ASENetworkBuilder, ASEModelBuilder
-
-from ase.utils.config import set_np_formatting, get_args, load_cfg, parse_sim_params
-from ase.utils.parse_task import parse_task
+from ase.norlg_learning.utils import DefaultRewardsShaper
+from ase.utils.config import set_np_formatting, get_args, load_cfg
 
 RUN_RLG = False
-
-
-def create_rlgpu_env(args, cfg, cfg_train, **kwargs):
-    sim_params = parse_sim_params(args, cfg, cfg_train)
-    task, env = parse_task(args, cfg, cfg_train, sim_params)
-
-    print('num_envs: {:d}'.format(env.num_envs))
-    print('num_actions: {:d}'.format(env.num_actions))
-    print('num_obs: {:d}'.format(env.num_obs))
-    print('num_states: {:d}'.format(env.num_states))
-    
-    return env
 
 
 # Replace rlgames' torch_runner and factories
@@ -88,20 +72,19 @@ class Runner:
         network_builder = ASENetworkBuilder()
         network_builder.load(params["network"])
         model_builder = ASEModelBuilder(network_builder)
-
         return model_builder
 
     def run(self, args):
-        if 'checkpoint' in args and args['checkpoint'] is not None:
-            if len(args['checkpoint']) > 0:
-                self.load_path = args['checkpoint']
+        if "checkpoint" in args and args["checkpoint"] is not None:
+            if len(args["checkpoint"]) > 0:
+                self.load_path = args["checkpoint"]
 
-        if args['train']:
+        if args["train"]:
             raise NotImplementedError
             # self.run_train()
 
-        elif args['play']:
-            print('Started to play')
+        elif args["play"]:
+            print("Started to play")
             player = self.create_player()
             player.restore(self.load_path)
             player.run()
@@ -110,14 +93,13 @@ class Runner:
             raise ValueError(f"Unknown command: {args}")
 
     def create_player(self):
-        return rlg_ase_players.ASEPlayer(self.config)
-        # if RUN_RLG:
-        #     return rlg_ase_players.ASEPlayer(self.config)
-        # else:
-        #     raise NotImplementedError
+        if RUN_RLG:
+            return rlg_ase_players.ASEPlayer(self.config)
+        else:
+            return ASEPlayer(self.config, self.env_creator)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     set_np_formatting()
     args = get_args()
 
@@ -137,10 +119,10 @@ if __name__ == '__main__':
     cfg, cfg_train, logdir = load_cfg(args)
 
     if args.motion_file:
-        cfg['env']['motion_file'] = args.motion_file
+        cfg["env"]["motion_file"] = args.motion_file
 
     # Create default directories for weights and statistics
-    cfg_train['params']['config']['train_dir'] = args.output_path
+    cfg_train["params"]["config"]["train_dir"] = args.output_path
 
     env_creator = lambda **kwargs: create_rlgpu_env(args, cfg, cfg_train, **kwargs)
     env_configurations.register("rlgpu", {"env_creator": env_creator, "vecenv_type": "RLGPU"})

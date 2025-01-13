@@ -26,8 +26,8 @@ class ASENetworkBuilder:
         def __init__(self, params, **kwargs):
             actions_num = kwargs.pop("actions_num")
             input_shape = kwargs.pop("input_shape")
-            amp_input_shape = kwargs.get('amp_input_shape')
-            self._ase_latent_shape = kwargs.get('ase_latent_shape')
+            amp_input_shape = kwargs.get("amp_input_shape")
+            self._ase_latent_shape = kwargs.get("ase_latent_shape")
 
             super().__init__()
 
@@ -37,11 +37,13 @@ class ASENetworkBuilder:
             # Actor
             style_units = [512, 256]
             style_dim = self._ase_latent_shape[-1]
-            self.actor_mlp = AMPStyleCatNet1(obs_size=input_shape[-1],
-                                             ase_latent_size=style_dim,
-                                             units=self.units,
-                                             style_units=style_units,
-                                             style_dim=style_dim)
+            self.actor_mlp = AMPStyleCatNet1(
+                obs_size=input_shape[-1],
+                ase_latent_size=style_dim,
+                units=self.units,
+                style_units=style_units,
+                style_dim=style_dim,
+            )
 
             actor_out_size = self.actor_mlp.get_out_size()
             self.mu = nn.Linear(actor_out_size, actions_num)
@@ -57,9 +59,9 @@ class ASENetworkBuilder:
                 nn.init.constant_(self.sigma, self.space_config["sigma_init"]["val"])
 
             # Critic
-            self.critic_mlp = AMPMLPNet(obs_size=input_shape[-1],
-                                        ase_latent_size=style_dim,
-                                        units=self.units)
+            self.critic_mlp = AMPMLPNet(
+                obs_size=input_shape[-1], ase_latent_size=style_dim, units=self.units
+            )
 
             critic_out_size = self.critic_mlp.get_out_size()
             self.value = nn.Linear(critic_out_size, 1)
@@ -77,8 +79,8 @@ class ASENetworkBuilder:
             self._enc = layer_init(nn.Linear(self.units[-1], self._ase_latent_shape[-1]))
 
         def forward(self, obs_dict):
-            obs = obs_dict['obs']
-            ase_latents = obs_dict['ase_latents']
+            obs = obs_dict["obs"]
+            ase_latents = obs_dict["ase_latents"]
             states = None  # obs_dict.get('rnn_states', None)
 
             actor_outputs = self.eval_actor(obs, ase_latents)
@@ -94,7 +96,7 @@ class ASENetworkBuilder:
         def eval_actor(self, obs, ase_latents, use_hidden_latents=False):
             a_out = self.actor_mlp(obs, ase_latents, use_hidden_latents)
             mu = self.mu(a_out)
-            if self.space_config['fixed_sigma']:
+            if self.space_config["fixed_sigma"]:
                 sigma = self.sigma
             else:
                 sigma = self.sigma(a_out)
@@ -186,8 +188,8 @@ class AMPMLPNet(nn.Module):
         super().__init__()
 
         input_size = obs_size + ase_latent_size
-        print('build amp mlp net:', input_size)
-        
+        print("build amp mlp net:", input_size)
+
         self._units = units  # [1024, 1024, 512]
         self._mlp = nn.Sequential(
             layer_init(nn.Linear(input_size, self._units[0])),
@@ -210,11 +212,10 @@ class AMPMLPNet(nn.Module):
 
 
 class AMPStyleCatNet1(nn.Module):
-    def __init__(self, obs_size, ase_latent_size, units,
-                 style_units, style_dim):
+    def __init__(self, obs_size, ase_latent_size, units, style_units, style_dim):
         super().__init__()
 
-        print('build amp style cat net:', obs_size, ase_latent_size)
+        print("build amp style cat net:", obs_size, ase_latent_size)
 
         self._style_mlp = nn.Sequential(  # style_units = [512, 256]
             layer_init(nn.Linear(ase_latent_size, style_units[0])),
@@ -226,15 +227,17 @@ class AMPStyleCatNet1(nn.Module):
         self._style_activation = nn.Tanh()  # torch.tanh
 
         self._units = units
-        self._dense_layers = nn.ModuleList([
-            layer_init(nn.Linear(obs_size + style_dim, self._units[0])),
-            layer_init(nn.Linear(self._units[0], self._units[1])),
-            layer_init(nn.Linear(self._units[1], self._units[2])),
-        ])
+        self._dense_layers = nn.ModuleList(
+            [
+                layer_init(nn.Linear(obs_size + style_dim, self._units[0])),
+                layer_init(nn.Linear(self._units[0], self._units[1])),
+                layer_init(nn.Linear(self._units[1], self._units[2])),
+            ]
+        )
         self._activation = nn.ReLU()
 
     def forward(self, obs, latent, skip_style):
-        if (skip_style):
+        if skip_style:
             style = latent
         else:
             style = self.eval_style(latent)
