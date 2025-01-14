@@ -138,13 +138,14 @@ if __name__ == "__main__":
         args.test = True
         args.num_envs = 1
         args.motion_file = "ase/data/motions/reallusion_sword_shield/RL_Avatar_Atk_Jump_Motion.npy"
-        args.checkpoint = "ase/data/models/ase_llc_reallusion_sword_shield.pth"
+        # args.checkpoint = "ase/data/models/ase_llc_reallusion_sword_shield.pth"
+        args.checkpoint = "../test.pth"
 
     else:
         args.motion_file = (
             "ase/data/motions/reallusion_sword_shield/dataset_reallusion_sword_shield.yaml"
         )
-        args.motion_file = "ase/data/motions/reallusion_sword_shield/RL_Avatar_Atk_Jump_Motion.npy"
+        # args.motion_file = "ase/data/motions/reallusion_sword_shield/RL_Avatar_Atk_Jump_Motion.npy"
         args.headless = True
 
     # Set the correct mode
