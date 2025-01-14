@@ -1,7 +1,9 @@
 import gym
 import numpy as np
+
 import torch
 import torch.nn as nn
+from torch.utils.data import Dataset
 
 
 numpy_to_torch_dtype_dict = {
@@ -40,52 +42,48 @@ def rescale_actions(low, high, action):
     return scaled_action
 
 
-class RLGPUAlgoObserver:
-    def __init__(self, use_successes=True):
-        self.use_successes = use_successes
-        self.consecutive_successes = None
-
-    def set_writer(self, writer):
-        self.writer = writer
-
-    def set_consecutive_successes(self, consecutive_successes):
-        self.consecutive_successes = consecutive_successes
+class DefaultAlgoObserver:
+    def before_init(self, base_name, config, experiment_name):
+        pass
 
     def after_init(self, algo):
         self.algo = algo
-        self.consecutive_successes = AverageMeter(1, self.algo.games_to_track).to(
-            self.algo.ppo_device
-        )
+        self.game_scores = AverageMeter(1, self.algo.games_to_track).to(self.algo.device)
         self.writer = self.algo.writer
-        return
 
     def process_infos(self, infos, done_indices):
-        if isinstance(infos, dict):
-            if not self.use_successes and "consecutive_successes" in infos:
-                cons_successes = infos["consecutive_successes"].clone()
-                self.consecutive_successes.update(cons_successes.to(self.algo.ppo_device))
-            if self.use_successes and "successes" in infos:
-                successes = infos["successes"].clone()
-                self.consecutive_successes.update(successes[done_indices].to(self.algo.ppo_device))
-        return
+        if not infos:
+            return
+        if not isinstance(infos, dict) and len(infos) > 0 and isinstance(infos[0], dict):
+            done_indices = done_indices.cpu()
+            for ind in done_indices:
+                ind = ind.item()
+                if len(infos) <= ind // self.algo.num_agents:
+                    continue
+                info = infos[ind // self.algo.num_agents]
+                game_res = None
+                if "battle_won" in info:
+                    game_res = info["battle_won"]
+                if "scores" in info:
+                    game_res = info["scores"]
+
+                if game_res is not None:
+                    self.game_scores.update(
+                        torch.from_numpy(np.asarray([game_res])).to(self.algo.ppo_device)
+                    )
+
+    def after_steps(self):
+        pass
 
     def after_clear_stats(self):
-        self.consecutive_successes.clear()
-        return
+        self.game_scores.clear()
 
     def after_print_stats(self, frame, epoch_num, total_time):
-        if self.consecutive_successes.current_size > 0:
-            mean_con_successes = self.consecutive_successes.get_mean()
-            self.writer.add_scalar(
-                "successes/consecutive_successes/mean", mean_con_successes, frame
-            )
-            self.writer.add_scalar(
-                "successes/consecutive_successes/iter", mean_con_successes, epoch_num
-            )
-            self.writer.add_scalar(
-                "successes/consecutive_successes/time", mean_con_successes, total_time
-            )
-        return
+        if self.game_scores.current_size > 0 and self.writer is not None:
+            mean_scores = self.game_scores.get_mean()
+            self.writer.add_scalar("scores/mean", mean_scores, frame)
+            self.writer.add_scalar("scores/iter", mean_scores, epoch_num)
+            self.writer.add_scalar("scores/time", mean_scores, total_time)
 
 
 class AverageMeter(nn.Module):
@@ -341,3 +339,127 @@ class ExperienceBuffer:
                 res_dict[k] = transform_op(v)
 
         return res_dict
+
+
+class AMPDataset(Dataset):
+    def __init__(self, batch_size, minibatch_size, device):
+        self.batch_size = batch_size
+        self.minibatch_size = minibatch_size
+        self.device = device
+        self.length = self.batch_size // self.minibatch_size
+
+        self.special_names = ["rnn_states"]
+        self._idx_buf = torch.randperm(batch_size)
+
+    def __len__(self):
+        return self.length
+
+    def __getitem__(self, idx):
+        return self._get_item(idx)
+
+    def update_values_dict(self, values_dict):
+        self.values_dict = values_dict
+
+    def update_mu_sigma(self, mu, sigma):
+        raise NotImplementedError()
+
+        # start = self.last_range[0]
+        # end = self.last_range[1]
+        # self.values_dict["mu"][start:end] = mu
+        # self.values_dict["sigma"][start:end] = sigma
+
+    def _get_item(self, idx):
+        start = idx * self.minibatch_size
+        end = (idx + 1) * self.minibatch_size
+        sample_idx = self._idx_buf[start:end]
+
+        input_dict = {}
+        for k, v in self.values_dict.items():
+            if k not in self.special_names and v is not None:
+                input_dict[k] = v[sample_idx]
+
+        if end >= self.batch_size:
+            self._shuffle_idx_buf()
+
+        return input_dict
+
+    def _shuffle_idx_buf(self):
+        self._idx_buf[:] = torch.randperm(self.batch_size)
+        return
+
+
+class ReplayBuffer:
+    def __init__(self, buffer_size, device):
+        self._head = 0
+        self._total_count = 0
+        self._buffer_size = buffer_size
+        self._device = device
+        self._data_buf = None
+        self._sample_idx = torch.randperm(buffer_size)
+        self._sample_head = 0
+
+    def reset(self):
+        self._head = 0
+        self._total_count = 0
+        self._reset_sample_idx()
+
+    def get_buffer_size(self):
+        return self._buffer_size
+
+    def get_total_count(self):
+        return self._total_count
+
+    def store(self, data_dict):
+        if self._data_buf is None:
+            self._init_data_buf(data_dict)
+
+        n = next(iter(data_dict.values())).shape[0]
+        buffer_size = self.get_buffer_size()
+        assert n <= buffer_size
+
+        for key, curr_buf in self._data_buf.items():
+            curr_n = data_dict[key].shape[0]
+            assert n == curr_n
+
+            store_n = min(curr_n, buffer_size - self._head)
+            curr_buf[self._head : (self._head + store_n)] = data_dict[key][:store_n]
+
+            remainder = n - store_n
+            if remainder > 0:
+                curr_buf[0:remainder] = data_dict[key][store_n:]
+
+        self._head = (self._head + n) % buffer_size
+        self._total_count += n
+
+    def sample(self, n):
+        total_count = self.get_total_count()
+        buffer_size = self.get_buffer_size()
+
+        idx = torch.arange(self._sample_head, self._sample_head + n)
+        idx = idx % buffer_size
+        rand_idx = self._sample_idx[idx]
+        if total_count < buffer_size:
+            rand_idx = rand_idx % self._head
+
+        samples = dict()
+        for k, v in self._data_buf.items():
+            samples[k] = v[rand_idx]
+
+        self._sample_head += n
+        if self._sample_head >= buffer_size:
+            self._reset_sample_idx()
+
+        return samples
+
+    def _reset_sample_idx(self):
+        buffer_size = self.get_buffer_size()
+        self._sample_idx[:] = torch.randperm(buffer_size)
+        self._sample_head = 0
+
+    def _init_data_buf(self, data_dict):
+        buffer_size = self.get_buffer_size()
+        self._data_buf = dict()
+
+        for k, v in data_dict.items():
+            v_shape = v.shape[1:]
+            self._data_buf[k] = torch.zeros((buffer_size,) + v_shape, device=self._device)

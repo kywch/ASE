@@ -63,6 +63,7 @@ class CommonAgent:
                 self.obs_shape[k] = v.shape
         else:
             self.obs_shape = self.observation_space.shape
+        self.amp_obs_shape = self.env.amp_observation_space.shape
 
         self.states = None
         self.player_config = self.config.get("player", {})
@@ -88,8 +89,26 @@ class CommonAgent:
 
         self._latent_dim = config["latent_dim"]
         self.normalize_input = self.config.get("normalize_input", False)
+        self.normalize_value = self.config.get("normalize_value", False)
         self._normalize_amp_input = config.get("normalize_amp_input", True)
         self._build_model()
+
+        # ase latent-related
+        if hasattr(self, "env"):
+            num_envs = self.task_env.num_envs
+        else:
+            num_envs = self.env_info["num_envs"]
+        self.all_env_ids = torch.arange(num_envs, dtype=torch.long, device=self.device)
+        self._ase_latents = torch.zeros(
+            (num_envs, self._latent_dim), dtype=torch.float32, device=self.device
+        )
+
+        self._latent_steps_min = config.get("latent_steps_min", np.inf)
+        self._latent_steps_max = config.get("latent_steps_max", np.inf)
+
+        # Used in training, _amp_debug
+        self._disc_reward_scale = config["disc_reward_scale"]
+        self._enc_reward_scale = config["enc_reward_scale"]
 
     def _setup_action_space(self):
         self.actions_num = self.action_space.shape[0]
@@ -102,31 +121,61 @@ class CommonAgent:
             "actions_num": self.actions_num,
             "input_shape": obs_shape,
             # 'num_seqs' : self.num_agents  # used for rnn, so not needed
-            "amp_input_shape": self.env.amp_observation_space.shape,
+            "amp_input_shape": self.amp_obs_shape,
             "ase_latent_shape": (self._latent_dim,),
         }
 
         self.model = self.network.build(config)
         self.model.to(self.device)
-        self.model.eval()
         self.is_rnn = self.model.is_rnn()
         assert not self.is_rnn, "ASE policy does not use RNN"
 
-        self.running_mean_std = None
-        if self.normalize_input:
-            self.running_mean_std = RunningMeanStd(obs_shape).to(self.device)
-            self.running_mean_std.eval()
+        self.running_mean_std = (
+            RunningMeanStd(obs_shape).to(self.device) if self.normalize_input else None
+        )
+        self.value_mean_std = RunningMeanStd((1,)).to(self.device) if self.normalize_value else None
+        self._amp_input_mean_std = (
+            RunningMeanStd(self.amp_obs_shape).to(self.device)
+            if self._normalize_amp_input
+            else None
+        )
+        self.set_eval()
 
-        self._amp_input_mean_std = None
+    def set_eval(self):
+        self.model.eval()
+        if self.normalize_input:
+            self.running_mean_std.eval()
+        if self.normalize_value:
+            self.value_mean_std.eval()
         if self._normalize_amp_input:
-            assert hasattr(self, "env"), "env is not set"
-            self._amp_input_mean_std = RunningMeanStd(config["amp_input_shape"]).to(self.device)
             self._amp_input_mean_std.eval()
+
+    def set_train(self):
+        self.model.train()
+        if self.normalize_input:
+            self.running_mean_std.train()
+        if self.normalize_value:
+            self.value_mean_std.train()
+        if self._normalize_amp_input:
+            self._amp_input_mean_std.train()
+
+    def get_model_weights(self):
+        state_dict = {}
+        state_dict["model"] = self.model.state_dict()
+        if self.normalize_input:
+            state_dict["running_mean_std"] = self.running_mean_std.state_dict()
+        if self.normalize_value:
+            state_dict["value_mean_std"] = self.value_mean_std.state_dict()
+        if self._normalize_amp_input:
+            state_dict["amp_input_mean_std"] = self._amp_input_mean_std.state_dict()
+        return state_dict
 
     def set_model_weights(self, state_dict):
         self.model.load_state_dict(state_dict["model"])
         if self.normalize_input:
             self.running_mean_std.load_state_dict(state_dict["running_mean_std"])
+        if self.normalize_value and "value_mean_std" in state_dict:
+            self.value_mean_std.load_state_dict(state_dict["value_mean_std"])
         if self._normalize_amp_input:
             self._amp_input_mean_std.load_state_dict(state_dict["amp_input_mean_std"])
 
@@ -151,28 +200,96 @@ class CommonAgent:
             amp_obs = self._amp_input_mean_std(amp_obs)
         return amp_obs
 
+    @property
+    def task_env(self):
+        raise NotImplementedError
+
+    def _change_char_color(self, env_ids):
+        if self.task_env.viewer is None:
+            return
+
+        base_col = np.array([0.4, 0.4, 0.4])
+        range_col = np.array([0.0706, 0.149, 0.2863])
+        range_sum = np.linalg.norm(range_col)
+
+        rand_col = np.random.uniform(0.0, 1.0, size=3)
+        rand_col = range_sum * rand_col / np.linalg.norm(rand_col)
+        rand_col += base_col
+        self.task_env.set_char_color(rand_col, env_ids)
+
+    def _reset_latents(self, done_env_ids=None):
+        if done_env_ids is None:
+            done_env_ids = self.all_env_ids
+
+        rand_vals = self._sample_latents(len(done_env_ids))
+        self._ase_latents[done_env_ids] = rand_vals
+        self._change_char_color(done_env_ids)
+
+    def _sample_latents(self, num):
+        return self.model.a2c_network.sample_latents(num)
+
+    def _calc_amp_rewards(self, amp_obs, ase_latents):
+        disc_r = self._calc_disc_rewards(amp_obs)
+        enc_r = self._calc_enc_rewards(amp_obs, ase_latents)
+        output = {"disc_rewards": disc_r, "enc_rewards": enc_r}
+        return output
+
+    def _calc_disc_rewards(self, amp_obs):
+        with torch.no_grad():
+            disc_logits = self._eval_disc(amp_obs)
+            prob = 1 / (1 + torch.exp(-disc_logits))
+            disc_r = -torch.log(torch.maximum(1 - prob, torch.tensor(0.0001, device=self.device)))
+            disc_r *= self._disc_reward_scale
+        return disc_r
+
+    def _calc_enc_rewards(self, amp_obs, ase_latents):
+        with torch.no_grad():
+            enc_pred = self._eval_enc(amp_obs)
+            err = self._calc_enc_error(enc_pred, ase_latents)
+            enc_r = torch.clamp_min(-err, 0.0)
+            enc_r *= self._enc_reward_scale
+        return enc_r
+
+    def _calc_enc_error(self, enc_pred, ase_latent):
+        err = enc_pred * ase_latent
+        err = -torch.sum(err, dim=-1, keepdim=True)
+        return err
+
+    def _eval_disc(self, amp_obs):
+        proc_amp_obs = self._preproc_amp_obs(amp_obs)
+        return self.model.a2c_network.eval_disc(proc_amp_obs)
+
+    def _eval_enc(self, amp_obs):
+        proc_amp_obs = self._preproc_amp_obs(amp_obs)
+        return self.model.a2c_network.eval_enc(proc_amp_obs)
+
+    def _amp_debug(self, info, ase_latents=None):
+        if ase_latents is None:
+            ase_latents = self._ase_latents
+
+        with torch.no_grad():
+            amp_obs = info["amp_obs"]
+            amp_obs = amp_obs
+            disc_pred = self._eval_disc(amp_obs)
+            amp_rewards = self._calc_amp_rewards(amp_obs, ase_latents)
+            disc_reward = amp_rewards["disc_rewards"]
+            enc_reward = amp_rewards["enc_rewards"]
+
+        disc_pred = disc_pred.detach().cpu().numpy()[0, 0]
+        disc_reward = disc_reward.cpu().numpy()[0, 0]
+        enc_reward = enc_reward.cpu().numpy()[0, 0]
+        print("disc_pred: ", disc_pred, disc_reward, enc_reward)
+
 
 class ASEPlayer(CommonAgent):
     def __init__(self, config, env_creator):
-        self._latent_steps_min = config.get("latent_steps_min", np.inf)
-        self._latent_steps_max = config.get("latent_steps_max", np.inf)
-
-        self._disc_reward_scale = config["disc_reward_scale"]
-        self._enc_reward_scale = config["enc_reward_scale"]
-
         env_config = config.get("env_config", {})
         env = env_creator(**env_config)
         super().__init__(config, env)
 
-        if hasattr(self, "env"):
-            batch_size = self.env.task.num_envs
-        else:
-            batch_size = self.env_info["num_envs"]
-        self._ase_latents = torch.zeros(
-            (batch_size, self._latent_dim), dtype=torch.float32, device=self.device
-        )
-
-        return
+    @property
+    def task_env(self):
+        return self.env.task
 
     def get_batch_size(self, obses):
         obs_shape = self.obs_shape
@@ -284,7 +401,7 @@ class ASEPlayer(CommonAgent):
             current_action = mu
         else:
             current_action = action
-        current_action = current_action.detach()
+        # current_action = current_action.detach()
 
         return rescale_actions(
             self.actions_low, self.actions_high, torch.clamp(current_action, -1.0, 1.0)
@@ -295,91 +412,20 @@ class ASEPlayer(CommonAgent):
         self._reset_latents(env_ids)
         return obs
 
-    def _reset_latents(self, done_env_ids=None):
-        if done_env_ids is None:
-            num_envs = self.env.task.num_envs
-            done_env_ids = to_torch(np.arange(num_envs), dtype=torch.long, device=self.device)
-
-        rand_vals = self.model.a2c_network.sample_latents(len(done_env_ids))
-        self._ase_latents[done_env_ids] = rand_vals
-        self._change_char_color(done_env_ids)
-
     def _update_latents(self):
         if self._latent_step_count <= 0:
             self._reset_latents()
             self._reset_latent_step_count()
 
-            if self.env.task.viewer:
+            if self.task_env.viewer:
                 print("Sampling new amp latents------------------------------")
-                num_envs = self.env.task.num_envs
-                env_ids = to_torch(np.arange(num_envs), dtype=torch.long, device=self.device)
-                self._change_char_color(env_ids)
+                self._change_char_color(self.all_env_ids)
         else:
             self._latent_step_count -= 1
 
     def _reset_latent_step_count(self):
         self._latent_step_count = np.random.randint(self._latent_steps_min, self._latent_steps_max)
 
-    def _calc_amp_rewards(self, amp_obs, ase_latents):
-        disc_r = self._calc_disc_rewards(amp_obs)
-        enc_r = self._calc_enc_rewards(amp_obs, ase_latents)
-        output = {"disc_rewards": disc_r, "enc_rewards": enc_r}
-        return output
-
-    def _calc_disc_rewards(self, amp_obs):
-        with torch.no_grad():
-            disc_logits = self._eval_disc(amp_obs)
-            prob = 1 / (1 + torch.exp(-disc_logits))
-            disc_r = -torch.log(torch.maximum(1 - prob, torch.tensor(0.0001, device=self.device)))
-            disc_r *= self._disc_reward_scale
-        return disc_r
-
-    def _calc_enc_rewards(self, amp_obs, ase_latents):
-        with torch.no_grad():
-            enc_pred = self._eval_enc(amp_obs)
-            err = self._calc_enc_error(enc_pred, ase_latents)
-            enc_r = torch.clamp_min(-err, 0.0)
-            enc_r *= self._enc_reward_scale
-        return enc_r
-
-    def _calc_enc_error(self, enc_pred, ase_latent):
-        err = enc_pred * ase_latent
-        err = -torch.sum(err, dim=-1, keepdim=True)
-        return err
-
-    def _eval_disc(self, amp_obs):
-        proc_amp_obs = self._preproc_amp_obs(amp_obs)
-        return self.model.a2c_network.eval_disc(proc_amp_obs)
-
-    def _eval_enc(self, amp_obs):
-        proc_amp_obs = self._preproc_amp_obs(amp_obs)
-        return self.model.a2c_network.eval_enc(proc_amp_obs)
-
     def _post_step(self, info):
-        if self.env.task.viewer:
+        if self.task_env.viewer:
             self._amp_debug(info)
-
-    def _amp_debug(self, info):
-        with torch.no_grad():
-            amp_obs = info["amp_obs"]
-            amp_obs = amp_obs
-            ase_latents = self._ase_latents
-            disc_pred = self._eval_disc(amp_obs)
-            amp_rewards = self._calc_amp_rewards(amp_obs, ase_latents)
-            disc_reward = amp_rewards["disc_rewards"]
-            enc_reward = amp_rewards["enc_rewards"]
-
-        disc_pred = disc_pred.detach().cpu().numpy()[0, 0]
-        disc_reward = disc_reward.cpu().numpy()[0, 0]
-        enc_reward = enc_reward.cpu().numpy()[0, 0]
-        print("disc_pred: ", disc_pred, disc_reward, enc_reward)
-
-    def _change_char_color(self, env_ids):
-        base_col = np.array([0.4, 0.4, 0.4])
-        range_col = np.array([0.0706, 0.149, 0.2863])
-        range_sum = np.linalg.norm(range_col)
-
-        rand_col = np.random.uniform(0.0, 1.0, size=3)
-        rand_col = range_sum * rand_col / np.linalg.norm(rand_col)
-        rand_col += base_col
-        self.env.task.set_char_color(rand_col, env_ids)

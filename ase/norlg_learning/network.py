@@ -24,6 +24,7 @@ class ASENetworkBuilder:
 
     class Network(nn.Module):
         def __init__(self, params, **kwargs):
+            self.is_continuous = True
             actions_num = kwargs.pop("actions_num")
             input_shape = kwargs.pop("input_shape")
             amp_input_shape = kwargs.get("amp_input_shape")
@@ -108,6 +109,18 @@ class ASENetworkBuilder:
             disc_logits = self._disc_logits(disc_mlp_out)
             return disc_logits
 
+        def get_disc_logit_weights(self):
+            return torch.flatten(self._disc_logits.weight)
+
+        def get_disc_weights(self):
+            weights = []
+            for m in self._disc_mlp.modules():
+                if isinstance(m, nn.Linear):
+                    weights.append(torch.flatten(m.weight))
+
+            weights.append(torch.flatten(self._disc_logits.weight))
+            return weights
+
         def eval_enc(self, amp_obs):
             enc_mlp_out = self._enc_mlp(amp_obs)
             enc_output = self._enc(enc_mlp_out)
@@ -161,7 +174,27 @@ class ASEModelBuilder:
                     "mus": mu,
                     "sigmas": sigma,
                 }
+
+                # from ase.learning.amp_models: ModelAMPContinuous, Network.forward()
+                amp_obs = input_dict["amp_obs"]
+                disc_agent_logit = self.a2c_network.eval_disc(amp_obs)
+                result["disc_agent_logit"] = disc_agent_logit
+
+                amp_obs_replay = input_dict["amp_obs_replay"]
+                disc_agent_replay_logit = self.a2c_network.eval_disc(amp_obs_replay)
+                result["disc_agent_replay_logit"] = disc_agent_replay_logit
+
+                amp_demo_obs = input_dict["amp_obs_demo"]
+                disc_demo_logit = self.a2c_network.eval_disc(amp_demo_obs)
+                result["disc_demo_logit"] = disc_demo_logit
+
+                # from ase.learning.ase_models: ModelASEContinuous, Network.forward()
+                # amp_obs = input_dict['amp_obs']
+                enc_pred = self.a2c_network.eval_enc(amp_obs)
+                result["enc_pred"] = enc_pred
+
                 return result
+
             else:
                 selected_action = distr.sample()
                 neglogp = self.neglogp(selected_action, mu, sigma, logstd)

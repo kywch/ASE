@@ -9,15 +9,20 @@ from rl_games.common import env_configurations
 
 # RLG
 from ase.learning import ase_players as rlg_ase_players
+from ase.learning import ase_agent as rlg_ase_agent
+import ase.learning.rlgpu
 
 # NO RLG
-from ase.norlg_learning.env import create_rlgpu_env
+from ase.norlg_learning.env import create_rlgpu_env, RLGPUEnvWrapper
 from ase.norlg_learning.ase_players import ASEPlayer
+from ase.norlg_learning.ase_agent import ASEAgent
 from ase.norlg_learning.network import ASENetworkBuilder, ASEModelBuilder
-from ase.norlg_learning.utils import DefaultRewardsShaper
+from ase.norlg_learning.utils import DefaultRewardsShaper, DefaultAlgoObserver
 from ase.utils.config import set_np_formatting, get_args, load_cfg
 
+
 RUN_RLG = False
+RUN_EVAL = False
 
 
 # Replace rlgames' torch_runner and factories
@@ -63,12 +68,6 @@ class Runner:
         self.config["network"] = self.model
 
     def make_model_builder(self, params):
-        # if RUN_RLG:
-        #     network_builder = rlg_ase_network_builder.ASEBuilder()
-        #     network_builder.load(params["network"])
-        #     model_builder = rlg_ase_models.ModelASEContinuous(network_builder)
-
-        # else:
         network_builder = ASENetworkBuilder()
         network_builder.load(params["network"])
         model_builder = ASEModelBuilder(network_builder)
@@ -80,8 +79,7 @@ class Runner:
                 self.load_path = args["checkpoint"]
 
         if args["train"]:
-            raise NotImplementedError
-            # self.run_train()
+            self.run_train()
 
         elif args["play"]:
             print("Started to play")
@@ -98,6 +96,33 @@ class Runner:
         else:
             return ASEPlayer(self.config, self.env_creator)
 
+    def run_train(self):
+        print("Started to train")
+        self.reset()
+        self.load_config(self.default_config)
+
+        if self.algo_observer is None:
+            self.algo_observer = DefaultAlgoObserver()
+        self.config["algo_observer"] = self.algo_observer
+
+        if RUN_RLG:
+            self.config["features"] = {"observer": self.algo_observer}
+            agent = rlg_ase_agent.ASEAgent(base_name="run", config=self.config)
+
+        else:
+            vec_env = self.env_creator()
+            vec_env = RLGPUEnvWrapper(vec_env)
+            agent = ASEAgent(self.config, vec_env)
+
+        if self.load_check_point and (self.load_path is not None):
+            agent.restore(self.load_path)
+
+        # CHECK ME: is resume_from necessary?
+        # if agent.resume_from != 'None':
+        #     agent.restore(self.resume_from)
+
+        agent.train()
+
 
 if __name__ == "__main__":
     set_np_formatting()
@@ -105,15 +130,33 @@ if __name__ == "__main__":
 
     # Manually provide args
     args.seed = 1
-    args.train = False
-    args.play = True
     args.task = "HumanoidAMPGetup"
-    args.num_envs = 1
     args.cfg_env = "ase/data/cfg/humanoid_ase_sword_shield_getup.yaml"
     args.cfg_train = "ase/data/cfg/train/rlg/ase_humanoid.yaml"
-    # args.motion_file = "ase/data/motions/reallusion_sword_shield/dataset_reallusion_sword_shield.yaml"
-    args.motion_file = "ase/data/motions/reallusion_sword_shield/RL_Avatar_Atk_Jump_Motion.npy"
-    args.checkpoint = "ase/data/models/ase_llc_reallusion_sword_shield.pth"
+
+    if RUN_EVAL:
+        args.test = True
+        args.num_envs = 1
+        args.motion_file = "ase/data/motions/reallusion_sword_shield/RL_Avatar_Atk_Jump_Motion.npy"
+        args.checkpoint = "ase/data/models/ase_llc_reallusion_sword_shield.pth"
+
+    else:
+        args.motion_file = (
+            "ase/data/motions/reallusion_sword_shield/dataset_reallusion_sword_shield.yaml"
+        )
+        args.motion_file = "ase/data/motions/reallusion_sword_shield/RL_Avatar_Atk_Jump_Motion.npy"
+        args.headless = True
+
+    # Set the correct mode
+    if args.test:
+        args.play = args.test
+        args.train = False
+    elif args.play:
+        args.train = False
+    else:
+        args.train = True
+
+    vargs = vars(args)
 
     # Load config
     cfg, cfg_train, logdir = load_cfg(args)
@@ -126,8 +169,6 @@ if __name__ == "__main__":
 
     env_creator = lambda **kwargs: create_rlgpu_env(args, cfg, cfg_train, **kwargs)
     env_configurations.register("rlgpu", {"env_creator": env_creator, "vecenv_type": "RLGPU"})
-
-    vargs = vars(args)
 
     runner = Runner(env_creator)
     runner.load(cfg_train)
