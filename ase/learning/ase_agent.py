@@ -440,9 +440,9 @@ class ASEAgent(amp_agent.AMPAgent):
 
     def _enc_loss(self, enc_pred, ase_latent, enc_obs, loss_mask):
         enc_err = self._calc_enc_error(enc_pred, ase_latent)
-        #mask_sum = torch.sum(loss_mask)
-        #enc_err = enc_err.squeeze(-1)
-        #enc_loss = torch.sum(loss_mask * enc_err) / mask_sum
+        mask_sum = torch.sum(loss_mask)
+        enc_err = enc_err.squeeze(-1)
+        enc_loss = torch.sum(loss_mask * enc_err) / mask_sum
         enc_loss = torch.mean(enc_err)
 
         # weight decay

@@ -49,6 +49,7 @@ def get_env_info(env):
     result_shapes = {}
     result_shapes["observation_space"] = env.observation_space
     result_shapes["action_space"] = env.action_space
+    result_shapes["amp_observation_space"] = env.amp_observation_space
     result_shapes["agents"] = 1
     result_shapes["value_size"] = 1
     if hasattr(env, "get_number_of_agents"):

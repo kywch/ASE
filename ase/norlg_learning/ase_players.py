@@ -63,7 +63,7 @@ class CommonAgent:
                 self.obs_shape[k] = v.shape
         else:
             self.obs_shape = self.observation_space.shape
-        self.amp_obs_shape = self.env.amp_observation_space.shape
+        self.amp_obs_shape = self.env_info["amp_observation_space"].shape
 
         self.states = None
         self.player_config = self.config.get("player", {})

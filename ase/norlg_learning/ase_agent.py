@@ -8,7 +8,12 @@ from torch import optim
 
 from ase.norlg_learning.ase_players import CommonAgent
 
-from ase.norlg_learning.utils import AverageMeter, AMPDataset, ExperienceBuffer, ReplayBuffer
+from ase.norlg_learning.utils import (
+    AverageMeter,
+    AMPDataset,
+    ExperienceBuffer,
+    ReplayBuffer,
+)
 
 from tensorboardX import SummaryWriter
 
@@ -75,6 +80,9 @@ class ASEAgent(CommonAgent):
         self.grad_norm = config["grad_norm"]
         self.gamma = config["gamma"]
         self.tau = config["tau"]
+
+        # NOTE: ASE uses eps greedy. The policy does not learn when not using it.
+        self._rand_action_probs = None
 
         # Loss weights
         self.critic_coef = config.get("critic_coef", 1.0)
@@ -181,6 +189,9 @@ class ASEAgent(CommonAgent):
         self.experience_buffer.tensor_dict["amp_obs"] = torch.zeros(
             batch_shape + self.amp_obs_shape, device=self.device
         )
+        self.experience_buffer.tensor_dict["rand_action_mask"] = torch.zeros(
+            batch_shape, dtype=torch.float32, device=self.device
+        )
 
         amp_obs_demo_buffer_size = int(self.config["amp_obs_demo_buffer_size"])
         self._amp_obs_demo_buffer = ReplayBuffer(amp_obs_demo_buffer_size, self.device)
@@ -201,6 +212,7 @@ class ASEAgent(CommonAgent):
             batch_shape[-1], dtype=torch.int32, device=self.device
         )
         self._reset_latent_step_count()
+        self._build_rand_action_probs()
 
         self.update_list = ["actions", "neglogpacs", "values", "mus", "sigmas"]
         self.tensor_list = self.update_list + [
@@ -209,6 +221,7 @@ class ASEAgent(CommonAgent):
             "dones",
             "next_obses",
             "amp_obs",
+            "rand_action_mask",
             "ase_latents",
         ]
 
@@ -221,6 +234,16 @@ class ASEAgent(CommonAgent):
             low=self._latent_steps_min,
             high=self._latent_steps_max,
         )
+
+    def _build_rand_action_probs(self):
+        num_envs = len(self.all_env_ids)
+        self._rand_action_probs = 1.0 - torch.exp(10 * (self.all_env_ids / (num_envs - 1.0) - 1.0))
+        self._rand_action_probs[0] = 1.0
+        self._rand_action_probs[-1] = 0.0
+
+        # NOTE: ASE uses eps greedy. The policy does not learn when not using it.
+        # if not self._enable_eps_greedy:
+        #     self._rand_action_probs[:] = 1.0
 
     def save(self, file_path):
         print("=> saving checkpoint '{}'".format(file_path))
@@ -366,6 +389,7 @@ class ASEAgent(CommonAgent):
         dataset_dict["amp_obs"] = batch_dict["amp_obs"]
         dataset_dict["amp_obs_demo"] = batch_dict["amp_obs_demo"]
         dataset_dict["amp_obs_replay"] = batch_dict["amp_obs_replay"]
+        dataset_dict["rand_action_mask"] = batch_dict["rand_action_mask"]
         dataset_dict["ase_latents"] = batch_dict["ase_latents"]
 
         self.dataset.update_values_dict(dataset_dict)
@@ -440,8 +464,7 @@ class ASEAgent(CommonAgent):
 
             self._update_latents()
 
-            # res_dict = self.get_action_values(self.obs, self._ase_latents, self._rand_action_probs)
-            res_dict = self.get_action_values(self.obs, self._ase_latents)
+            res_dict = self.get_action_values(self.obs, self._ase_latents, self._rand_action_probs)
             for k in update_list:
                 self.experience_buffer.update_data(k, n, res_dict[k])
 
@@ -461,6 +484,7 @@ class ASEAgent(CommonAgent):
             self.experience_buffer.update_data("dones", n, self.dones)
             self.experience_buffer.update_data("amp_obs", n, infos["amp_obs"])
             self.experience_buffer.update_data("ase_latents", n, self._ase_latents)
+            self.experience_buffer.update_data("rand_action_mask", n, res_dict["rand_action_mask"])
 
             terminated = infos["terminate"].float()
             terminated = terminated.unsqueeze(-1)
@@ -526,7 +550,7 @@ class ASEAgent(CommonAgent):
             if self.task_env.viewer:
                 self._change_char_color(new_latent_env_ids)
 
-    def get_action_values(self, obs_torch, ase_latents):
+    def get_action_values(self, obs_torch, ase_latents, rand_action_probs):
         processed_obs = self._preproc_obs(obs_torch)
 
         self.model.eval()
@@ -542,6 +566,12 @@ class ASEAgent(CommonAgent):
 
         if self.normalize_value:
             res_dict["values"] = self.value_mean_std(res_dict["values"], True)
+
+        # Implementing eps greedy
+        rand_action_mask = torch.bernoulli(rand_action_probs)
+        det_action_mask = rand_action_mask == 0.0
+        res_dict["actions"][det_action_mask] = res_dict["mus"][det_action_mask]
+        res_dict["rand_action_mask"] = rand_action_mask
 
         return res_dict
 
@@ -606,6 +636,9 @@ class ASEAgent(CommonAgent):
         amp_obs_demo = self._preproc_amp_obs(amp_obs_demo)
         amp_obs_demo.requires_grad_(True)
 
+        rand_action_mask = input_dict["rand_action_mask"]
+        rand_action_sum = torch.sum(rand_action_mask)
+
         ase_latents = input_dict["ase_latents"]
 
         # lr = self.last_lr
@@ -649,17 +682,18 @@ class ASEAgent(CommonAgent):
             b_loss = self.bound_loss(mu)
 
             c_loss = torch.mean(c_loss)
-            a_loss = torch.mean(a_loss)
-            entropy = torch.mean(entropy)
-            b_loss = torch.mean(b_loss)
-            a_clip_frac = torch.mean(a_clipped)
+            a_loss = torch.sum(rand_action_mask * a_loss) / rand_action_sum
+            entropy = torch.sum(rand_action_mask * entropy) / rand_action_sum
+            b_loss = torch.sum(rand_action_mask * b_loss) / rand_action_sum
+            a_clip_frac = torch.sum(rand_action_mask * a_clipped) / rand_action_sum
 
             disc_agent_cat_logit = torch.cat([disc_agent_logit, disc_agent_replay_logit], dim=0)
             disc_info = self._disc_loss(disc_agent_cat_logit, disc_demo_logit, amp_obs_demo)
             disc_loss = disc_info["disc_loss"]
 
             enc_latents = batch_dict["ase_latents"][0 : self._amp_minibatch_size]
-            enc_info = self._enc_loss(enc_pred, enc_latents, batch_dict["amp_obs"])
+            enc_loss_mask = rand_action_mask[0 : self._amp_minibatch_size]
+            enc_info = self._enc_loss(enc_pred, enc_latents, batch_dict["amp_obs"], enc_loss_mask)
             enc_loss = enc_info["enc_loss"]
 
             loss = (
@@ -675,7 +709,7 @@ class ASEAgent(CommonAgent):
                 diversity_loss = self._diversity_loss(
                     batch_dict["obs"], mu, batch_dict["ase_latents"]
                 )
-                diversity_loss = torch.sum(diversity_loss)
+                diversity_loss = torch.sum(rand_action_mask * diversity_loss) / rand_action_sum
                 loss += self._amp_diversity_bonus * diversity_loss
                 a_info["amp_diversity_loss"] = diversity_loss
 
@@ -795,8 +829,12 @@ class ASEAgent(CommonAgent):
         demo_acc = torch.mean(demo_acc.float())
         return agent_acc, demo_acc
 
-    def _enc_loss(self, enc_pred, ase_latent, enc_obs):
+    # NOTE: enc_obs is used for enc_grad_penalty, but not used by default
+    def _enc_loss(self, enc_pred, ase_latent, enc_obs, loss_mask):
         enc_err = self._calc_enc_error(enc_pred, ase_latent)
+        mask_sum = torch.sum(loss_mask)
+        enc_err = enc_err.squeeze(-1)
+        enc_loss = torch.sum(loss_mask * enc_err) / mask_sum
         enc_loss = torch.mean(enc_err)
 
         # NOTE: weight decay is 0 by default

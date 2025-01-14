@@ -117,10 +117,6 @@ class Runner:
         if self.load_check_point and (self.load_path is not None):
             agent.restore(self.load_path)
 
-        # CHECK ME: is resume_from necessary?
-        # if agent.resume_from != 'None':
-        #     agent.restore(self.resume_from)
-
         agent.train()
 
 
@@ -137,9 +133,13 @@ if __name__ == "__main__":
     if RUN_EVAL:
         args.test = True
         args.num_envs = 1
+        # args.motion_file = (
+        #     "ase/data/motions/reallusion_sword_shield/dataset_reallusion_sword_shield.yaml"
+        # )
         args.motion_file = "ase/data/motions/reallusion_sword_shield/RL_Avatar_Atk_Jump_Motion.npy"
-        # args.checkpoint = "ase/data/models/ase_llc_reallusion_sword_shield.pth"
-        args.checkpoint = "../test.pth"
+        args.checkpoint = "ase/data/models/ase_llc_reallusion_sword_shield.pth"
+        # args.checkpoint = "../test2.pth"
+        # args.checkpoint = "ase/data/models/test_3hr.pth"
 
     else:
         args.motion_file = (
