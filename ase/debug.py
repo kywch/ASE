@@ -21,7 +21,7 @@ from ase.norlg_learning.utils import DefaultRewardsShaper, DefaultAlgoObserver
 from ase.utils.config import set_np_formatting, get_args, load_cfg
 
 
-RUN_RLG = True
+RUN_RLG = False
 RUN_EVAL = False
 
 
@@ -137,9 +137,9 @@ if __name__ == "__main__":
         #     "ase/data/motions/reallusion_sword_shield/dataset_reallusion_sword_shield.yaml"
         # )
         args.motion_file = "ase/data/motions/reallusion_sword_shield/RL_Avatar_Atk_Jump_Motion.npy"
-        args.checkpoint = "ase/data/models/ase_llc_reallusion_sword_shield.pth"
-        # args.checkpoint = "test/test3_8.pth"
-        # args.checkpoint = "ase/data/models/test_3hr.pth"
+        # args.checkpoint = "ase/data/models/ase_llc_reallusion_sword_shield.pth"
+        args.checkpoint = "test4_21000.pth"
+        # args.checkpoint = "test/Humanoid_40hr.pth"
 
     else:
         args.motion_file = (

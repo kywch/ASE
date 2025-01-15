@@ -242,8 +242,11 @@ class HumanoidAMP(Humanoid):
 
     def _init_amp_obs_default(self, env_ids):
         curr_amp_obs = self._curr_amp_obs_buf[env_ids].unsqueeze(-2)
-        self._hist_amp_obs_buf[env_ids] = curr_amp_obs
-        return
+        # self._hist_amp_obs_buf[env_ids] = curr_amp_obs
+
+        # NOTE: torch broadcasting works wierdly, so mannually expand the tensor
+        history_len = self._hist_amp_obs_buf.shape[1]
+        self._hist_amp_obs_buf[env_ids] = curr_amp_obs.expand(-1, history_len, -1)
 
     def _init_amp_obs_ref(self, env_ids, motion_ids, motion_times):
         dt = self.dt

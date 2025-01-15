@@ -44,6 +44,23 @@ def policy_kl(p0_mu, p0_sigma, p1_mu, p1_sigma, reduce=True):
         return kl
 
 
+def normalization_with_masks(values, masks):
+    values_mean, values_var = get_mean_var_with_masks(values, masks)
+    values_std = torch.sqrt(values_var)
+    normalized_values = (values - values_mean) / (values_std + 1e-8)
+
+    return normalized_values
+
+def get_mean_var_with_masks(values, masks):
+    sum_mask = masks.sum()
+    values_mask = values * masks
+    values_mean = values_mask.sum() / sum_mask
+    min_sqr = ((((values_mask)**2)/sum_mask).sum() - ((values_mask/sum_mask).sum())**2)
+    values_var = min_sqr * sum_mask / (sum_mask-1)
+
+    return values_mean, values_var
+
+
 class ASEAgent(CommonAgent):
     def __init__(self, config, env):
         super().__init__(config, env)
@@ -298,9 +315,8 @@ class ASEAgent(CommonAgent):
             if self._amp_replay_buffer.get_total_count() == 0:
                 batch_dict["amp_obs_replay"] = batch_dict["amp_obs"]
             else:
-                batch_dict["amp_obs_replay"] = self._amp_replay_buffer.sample(num_obs_samples)[
-                    "amp_obs"
-                ]
+                amp_obs_replay = self._amp_replay_buffer.sample(num_obs_samples)["amp_obs"]
+                batch_dict["amp_obs_replay"] = amp_obs_replay
 
             # Update the model
             update_time_start = time.time()
@@ -365,12 +381,11 @@ class ASEAgent(CommonAgent):
     def prepare_dataset(self, batch_dict):
         returns = batch_dict["returns"]
         values = batch_dict["values"]
+        rand_action_mask = batch_dict['rand_action_mask']
 
         advantages = torch.sum(returns - values, axis=1)
         if self.normalize_advantage:
-            adv_mean = torch.mean(advantages)
-            adv_std = torch.std(advantages)
-            advantages = (advantages - adv_mean) / (adv_std + 1e-8)
+            advantages = normalization_with_masks(advantages, rand_action_mask)
 
         if self.normalize_value:
             values = self.value_mean_std(values)

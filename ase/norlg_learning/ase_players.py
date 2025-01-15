@@ -34,7 +34,7 @@ import numpy as np
 import torch
 
 from ase.norlg_learning.env import get_env_info
-from ase.norlg_learning.utils import to_torch, rescale_actions, RunningMeanStd, shape_whc_to_cwh
+from ase.norlg_learning.utils import rescale_actions, RunningMeanStd, shape_whc_to_cwh
 
 
 class CommonAgent:
@@ -180,10 +180,10 @@ class CommonAgent:
             self._amp_input_mean_std.load_state_dict(state_dict["amp_input_mean_std"])
 
     def restore(self, file_path):
-        if os.path.exists(file_path):
-            print("=> loading checkpoint '{}'".format(file_path))
-            state_dict = torch.load(file_path)
-            self.set_model_weights(state_dict)
+        assert os.path.exists(file_path), "Checkpoint file does not exist"
+        print("=> loading checkpoint '{}'".format(file_path))
+        state_dict = torch.load(file_path)
+        self.set_model_weights(state_dict)
 
     def env_reset(self, env_ids=None):
         obs_torch = self.env.reset(env_ids)
@@ -269,7 +269,6 @@ class CommonAgent:
 
         with torch.no_grad():
             amp_obs = info["amp_obs"]
-            amp_obs = amp_obs
             disc_pred = self._eval_disc(amp_obs)
             amp_rewards = self._calc_amp_rewards(amp_obs, ase_latents)
             disc_reward = amp_rewards["disc_rewards"]

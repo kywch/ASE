@@ -130,6 +130,7 @@ class MotionLib():
         # Setting warn_only=True to suppress the error
         motion_ids = torch.multinomial(self._motion_weights, num_samples=n, replacement=True)
 
+        # Deterministic sampling
         # m = self.num_motions()
         # motion_ids = np.random.choice(m, size=n, replace=True, p=self._motion_weights)
         # motion_ids = torch.tensor(motion_ids, device=self._device, dtype=torch.long)
