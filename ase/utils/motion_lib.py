@@ -126,6 +126,8 @@ class MotionLib():
         return self._motions[motion_id]
 
     def sample_motions(self, n):
+        # NOTE: torch.multinomial raises RuntimeError with use_deterministic_algorithms = True
+        # Setting warn_only=True to suppress the error
         motion_ids = torch.multinomial(self._motion_weights, num_samples=n, replacement=True)
 
         # m = self.num_motions()

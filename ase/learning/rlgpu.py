@@ -50,3 +50,6 @@ class RLGPUEnv:
             print(info['action_space'], info['observation_space'])
 
         return info
+    
+    def get_env_state(self):
+        return None

@@ -28,14 +28,14 @@ class BaseTask():
         self.device_id = cfg.get("device_id", 0)
 
         self.device = "cpu"
-        if self.device_type == "cuda" or self.device_type == "GPU":
+        if self.device_type.startswith("cuda") or self.device_type == "GPU":
             self.device = "cuda" + ":" + str(self.device_id)
 
         self.headless = cfg["headless"]
 
         # double check!
         self.graphics_device_id = self.device_id
-        if enable_camera_sensors == False and self.headless == True:
+        if not enable_camera_sensors and self.headless:
             self.graphics_device_id = -1
 
         self.num_envs = cfg["env"]["numEnvs"]
@@ -84,7 +84,7 @@ class BaseTask():
         self.viewer = None
 
         # if running with a viewer, set up keyboard shortcuts and camera
-        if self.headless == False:
+        if not self.headless:
             # subscribe to keyboard shortcuts
             self.viewer = self.gym.create_viewer(
                 self.sim, gymapi.CameraProperties())
