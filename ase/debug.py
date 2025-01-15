@@ -4,6 +4,7 @@ import numpy as np
 # isaacgym must be imported before torch
 import isaacgym
 import torch
+import wandb
 
 from rl_games.common import env_configurations
 
@@ -23,6 +24,7 @@ from ase.utils.config import set_np_formatting, get_args, load_cfg
 
 RUN_RLG = False
 RUN_EVAL = False
+WANDB_TRACK = True
 
 
 # Replace rlgames' torch_runner and factories
@@ -138,7 +140,7 @@ if __name__ == "__main__":
         # )
         args.motion_file = "ase/data/motions/reallusion_sword_shield/RL_Avatar_Atk_Jump_Motion.npy"
         # args.checkpoint = "ase/data/models/ase_llc_reallusion_sword_shield.pth"
-        args.checkpoint = "test4_21000.pth"
+        args.checkpoint = "test5_8k.pth"
         # args.checkpoint = "test/Humanoid_40hr.pth"
 
     else:
@@ -171,7 +173,13 @@ if __name__ == "__main__":
     env_creator = lambda **kwargs: create_rlgpu_env(args, cfg, cfg_train, **kwargs)
     env_configurations.register("rlgpu", {"env_creator": env_creator, "vecenv_type": "RLGPU"})
 
+    if WANDB_TRACK and not RUN_EVAL:
+        wandb.init(project="ase", sync_tensorboard=True)
+
     runner = Runner(env_creator)
     runner.load(cfg_train)
     runner.reset()
     runner.run(vargs)
+
+    if WANDB_TRACK and not RUN_EVAL:
+        wandb.finish()
