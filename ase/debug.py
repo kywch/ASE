@@ -1,4 +1,6 @@
+import os
 import copy
+import random
 import numpy as np
 
 # isaacgym must be imported before torch
@@ -22,9 +24,9 @@ from ase.norlg_learning.utils import DefaultRewardsShaper, DefaultAlgoObserver
 from ase.utils.config import set_np_formatting, get_args, load_cfg
 
 
-RUN_RLG = False
+RUN_RLG = True
 RUN_EVAL = False
-WANDB_TRACK = True
+WANDB_TRACK = False
 
 
 # Replace rlgames' torch_runner and factories
@@ -53,9 +55,19 @@ class Runner:
         self.exp_config = None
 
         if self.seed:
-            torch.manual_seed(self.seed)
-            torch.cuda.manual_seed_all(self.seed)
+            random.seed(self.seed)
             np.random.seed(self.seed)
+            torch.manual_seed(self.seed)
+            os.environ["PYTHONHASHSEED"] = str(self.seed)
+            torch.cuda.manual_seed(self.seed)
+            torch.cuda.manual_seed_all(self.seed)
+
+            # refer to https://docs.nvidia.com/cuda/cublas/index.html#cublasApi_reproducibility
+            os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":4096:8"
+            torch.backends.cudnn.benchmark = False
+            torch.backends.cudnn.deterministic = True
+            torch.use_deterministic_algorithms(True)
+            # torch.set_deterministic_debug_mode("warn")
 
         if self.load_check_point:
             print("Found checkpoint")
@@ -140,10 +152,13 @@ if __name__ == "__main__":
         # )
         args.motion_file = "ase/data/motions/reallusion_sword_shield/RL_Avatar_Atk_Jump_Motion.npy"
         # args.checkpoint = "ase/data/models/ase_llc_reallusion_sword_shield.pth"
-        args.checkpoint = "test5_8k.pth"
-        # args.checkpoint = "test/Humanoid_40hr.pth"
+        # args.checkpoint = "test5_8k.pth"
+        args.checkpoint = "test/Humanoid_40hr.pth"
 
     else:
+        # make the training deterministic
+        args.device = "cpu"
+        args.rl_device = "cpu"
         args.motion_file = (
             "ase/data/motions/reallusion_sword_shield/dataset_reallusion_sword_shield.yaml"
         )
@@ -163,6 +178,10 @@ if __name__ == "__main__":
 
     # Load config
     cfg, cfg_train, logdir = load_cfg(args)
+
+    # xcxc -- for deterministic debugging
+    if args.device == "cpu":
+        cfg_train["params"]["config"]["device"] = "cpu"
 
     if args.motion_file:
         cfg["env"]["motion_file"] = args.motion_file

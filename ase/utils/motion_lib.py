@@ -126,14 +126,18 @@ class MotionLib():
         return self._motions[motion_id]
 
     def sample_motions(self, n):
+        # NOTE: _motion_weights are not equal ... why? included in the npy file?
+
         # NOTE: torch.multinomial raises RuntimeError with use_deterministic_algorithms = True
         # Setting warn_only=True to suppress the error
-        motion_ids = torch.multinomial(self._motion_weights, num_samples=n, replacement=True)
+        # motion_ids = torch.multinomial(self._motion_weights, num_samples=n, replacement=True)
 
-        # Deterministic sampling
-        # m = self.num_motions()
-        # motion_ids = np.random.choice(m, size=n, replace=True, p=self._motion_weights)
-        # motion_ids = torch.tensor(motion_ids, device=self._device, dtype=torch.long)
+        # Deterministic sampling -- NOTE: slow! only use for debugging
+        weights_cpu = self._motion_weights.cpu().numpy()
+        normalized_weights = weights_cpu / weights_cpu.sum()
+        indices = np.random.choice(len(weights_cpu), size=n, p=normalized_weights)
+        motion_ids = torch.from_numpy(indices).to(self._device)
+
         return motion_ids
 
     def sample_time(self, motion_ids, truncate_time=None):

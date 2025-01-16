@@ -12,6 +12,10 @@ def create_rlgpu_env(args, cfg, cfg_train, **kwargs):
     device_id = args.device_id
     rl_device = args.rl_device
 
+    if rl_device == "cpu":
+        sim_params.use_gpu_pipeline = False
+        sim_params.physx.use_gpu = False
+
     cfg["seed"] = cfg_train.get("seed", -1)
     cfg_task = cfg["env"]
     cfg_task["seed"] = cfg["seed"]
