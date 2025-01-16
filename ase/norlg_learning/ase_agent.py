@@ -350,16 +350,18 @@ class ASEAgent(CommonAgent):
             scaled_time = sum_time
             curr_frames = self.curr_frames
             self.frame += curr_frames
+            mean_rewards = self.game_rewards.get_mean()
             if self.print_stats:
                 fps_step = curr_frames / scaled_play_time
                 fps_total = curr_frames / scaled_time
                 print(
                     "epoch_num:{}".format(epoch_num),
-                    "mean_rewards:{}".format(self.game_rewards.get_mean()),
+                    "mean_rewards:{}".format(mean_rewards),
                     f"fps step: {fps_step:.1f} fps total: {fps_total:.1f}",
                 )
 
             frame = self.frame
+            self.writer.add_scalar('rewards0/frame', mean_rewards, frame)
             self.writer.add_scalar("performance/total_fps", curr_frames / scaled_time, frame)
             self.writer.add_scalar("performance/step_fps", curr_frames / scaled_play_time, frame)
             self.writer.add_scalar("info/epochs", epoch_num, frame)
