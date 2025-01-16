@@ -1,5 +1,6 @@
 import os
 import time
+import math
 import shutil
 from datetime import datetime
 
@@ -292,6 +293,8 @@ class ASEAgent(CommonAgent):
 
         model_output_file = os.path.join(self.nn_dir, self.config["name"])
 
+        self._init_amp_demo_buf()
+
         epoch_num = 0
         while True:
             epoch_num += 1
@@ -377,6 +380,13 @@ class ASEAgent(CommonAgent):
                 self.save(model_output_file)
                 print("Reached the maximum number of epochs. Finshed training.")
                 return self.last_mean_rewards, epoch_num
+
+    def _init_amp_demo_buf(self):
+        buffer_size = self._amp_obs_demo_buffer.get_buffer_size()
+        num_batches = math.ceil(buffer_size / self._amp_batch_size)
+        for i in range(num_batches):
+            curr_samples = self.task_env.fetch_amp_obs_demo(self._amp_batch_size)
+            self._amp_obs_demo_buffer.store({'amp_obs': curr_samples})
 
     def prepare_dataset(self, batch_dict):
         returns = batch_dict["returns"]
