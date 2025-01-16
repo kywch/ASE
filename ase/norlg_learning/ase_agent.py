@@ -1,15 +1,16 @@
 import os
 import time
-import math
 import shutil
 from datetime import datetime
 
+import numpy as np
 import torch
 from torch import optim
 
 from ase.norlg_learning.ase_players import CommonAgent
 
 from ase.norlg_learning.utils import (
+    to_torch,
     AverageMeter,
     AMPDataset,
     ExperienceBuffer,
@@ -52,12 +53,13 @@ def normalization_with_masks(values, masks):
 
     return normalized_values
 
+
 def get_mean_var_with_masks(values, masks):
     sum_mask = masks.sum()
     values_mask = values * masks
     values_mean = values_mask.sum() / sum_mask
-    min_sqr = ((((values_mask)**2)/sum_mask).sum() - ((values_mask/sum_mask).sum())**2)
-    values_var = min_sqr * sum_mask / (sum_mask-1)
+    min_sqr = (((values_mask) ** 2) / sum_mask).sum() - ((values_mask / sum_mask).sum()) ** 2
+    values_var = min_sqr * sum_mask / (sum_mask - 1)
 
     return values_mean, values_var
 
@@ -344,6 +346,8 @@ class ASEAgent(CommonAgent):
             train_info["play_time"] = scaled_play_time
             train_info["update_time"] = time.time() - update_time_start
 
+            self._store_replay_amp_obs(batch_dict["amp_obs"])
+
             # Log the stats
             sum_time = time.time() - start_time
             total_time += sum_time
@@ -361,7 +365,7 @@ class ASEAgent(CommonAgent):
                 )
 
             frame = self.frame
-            self.writer.add_scalar('rewards0/frame', mean_rewards, frame)
+            self.writer.add_scalar("rewards0/frame", mean_rewards, frame)
             self.writer.add_scalar("performance/total_fps", curr_frames / scaled_time, frame)
             self.writer.add_scalar("performance/step_fps", curr_frames / scaled_play_time, frame)
             self.writer.add_scalar("info/epochs", epoch_num, frame)
@@ -385,15 +389,33 @@ class ASEAgent(CommonAgent):
 
     def _init_amp_demo_buf(self):
         buffer_size = self._amp_obs_demo_buffer.get_buffer_size()
-        num_batches = math.ceil(buffer_size / self._amp_batch_size)
-        for i in range(num_batches):
+        num_batches = int(np.ceil(buffer_size / self._amp_batch_size))
+        for _ in range(num_batches):
             curr_samples = self.task_env.fetch_amp_obs_demo(self._amp_batch_size)
-            self._amp_obs_demo_buffer.store({'amp_obs': curr_samples})
+            self._amp_obs_demo_buffer.store({"amp_obs": curr_samples})
+
+    def _store_replay_amp_obs(self, amp_obs):
+        buf_size = self._amp_replay_buffer.get_buffer_size()
+        buf_total_count = self._amp_replay_buffer.get_total_count()
+        if buf_total_count > buf_size:
+            keep_probs = to_torch(
+                np.array([self._amp_replay_keep_prob] * amp_obs.shape[0]), device=self.device
+            )
+            keep_mask = torch.bernoulli(keep_probs) == 1.0
+            amp_obs = amp_obs[keep_mask]
+
+        if amp_obs.shape[0] > buf_size:
+            rand_idx = torch.randperm(amp_obs.shape[0])
+            rand_idx = rand_idx[:buf_size]
+            amp_obs = amp_obs[rand_idx]
+
+        self._amp_replay_buffer.store({"amp_obs": amp_obs})
+        return
 
     def prepare_dataset(self, batch_dict):
         returns = batch_dict["returns"]
         values = batch_dict["values"]
-        rand_action_mask = batch_dict['rand_action_mask']
+        rand_action_mask = batch_dict["rand_action_mask"]
 
         advantages = torch.sum(returns - values, axis=1)
         if self.normalize_advantage:
