@@ -115,7 +115,7 @@ class ASEAgent(CommonAgent):
         self._amp_diversity_tar = config.get("amp_diversity_tar", 0.0)
 
         # discriminator-related
-        self.bce_fn = torch.nn.BCEWithLogitsLoss()
+        # self.bce_fn = torch.nn.BCEWithLogitsLoss()
         self._disc_logit_reg = config["disc_logit_reg"]
         self._disc_grad_penalty = config["disc_grad_penalty"]
         self._disc_weight_decay = config["disc_weight_decay"]
@@ -828,8 +828,8 @@ class ASEAgent(CommonAgent):
 
     def _disc_loss(self, disc_agent_logit, disc_demo_logit, obs_demo):
         # prediction loss
-        disc_loss_agent = self.bce_fn(disc_agent_logit, torch.zeros_like(disc_agent_logit))
-        disc_loss_demo = self.bce_fn(disc_demo_logit, torch.ones_like(disc_demo_logit))
+        disc_loss_agent = self._disc_loss_neg(disc_agent_logit)
+        disc_loss_demo = self._disc_loss_pos(disc_demo_logit)
         disc_loss = 0.5 * (disc_loss_agent + disc_loss_demo)
 
         # logit reg
@@ -870,6 +870,16 @@ class ASEAgent(CommonAgent):
             "disc_demo_logit": disc_demo_logit.detach(),
         }
         return disc_info
+
+    def _disc_loss_neg(self, disc_logits):
+        bce = torch.nn.BCEWithLogitsLoss()
+        loss = bce(disc_logits, torch.zeros_like(disc_logits))
+        return loss
+    
+    def _disc_loss_pos(self, disc_logits):
+        bce = torch.nn.BCEWithLogitsLoss()
+        loss = bce(disc_logits, torch.ones_like(disc_logits))
+        return loss
 
     def _compute_disc_acc(self, disc_agent_logit, disc_demo_logit):
         agent_acc = disc_agent_logit < 0
