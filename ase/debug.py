@@ -27,6 +27,7 @@ from ase.utils.config import set_np_formatting, get_args, load_cfg
 RUN_RLG = False
 RUN_EVAL = False
 WANDB_TRACK = False
+USE_CPU = False  # use this for deterministic debugging
 
 
 # Replace rlgames' torch_runner and factories
@@ -157,8 +158,9 @@ if __name__ == "__main__":
 
     else:
         # set cpu to make the training deterministic
-        # args.device = "cpu"
-        # args.rl_device = "cpu"
+        if USE_CPU:
+            args.device = "cpu"
+            args.rl_device = "cpu"
         args.motion_file = (
             "ase/data/motions/reallusion_sword_shield/dataset_reallusion_sword_shield.yaml"
         )
