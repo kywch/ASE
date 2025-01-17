@@ -92,8 +92,7 @@ class Runner:
         return model_builder
 
     def run(self, args):
-        if "checkpoint" in args and             self.set_train()
-args["checkpoint"] is not None:
+        if "checkpoint" in args and args["checkpoint"] is not None:
             if len(args["checkpoint"]) > 0:
                 self.load_path = args["checkpoint"]
 
