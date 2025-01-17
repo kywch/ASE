@@ -393,11 +393,12 @@ class ASEAgent(amp_agent.AMPAgent):
 
     def _reset_latents(self, env_ids):
         n = len(env_ids)
-        z = self._sample_latents(n)
-        self._ase_latents[env_ids] = z
+        if n > 0:
+            z = self._sample_latents(n)
+            self._ase_latents[env_ids] = z
 
-        if (self.vec_env.env.task.viewer):
-            self._change_char_color(env_ids)
+            if (self.vec_env.env.task.viewer):
+                self._change_char_color(env_ids)
 
         return
 

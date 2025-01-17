@@ -27,7 +27,9 @@ from ase.utils.config import set_np_formatting, get_args, load_cfg
 RUN_RLG = False
 RUN_EVAL = False
 WANDB_TRACK = False
+
 USE_CPU = False  # use this for deterministic debugging
+PROFILE = False
 
 
 # Replace rlgames' torch_runner and factories
@@ -63,12 +65,13 @@ class Runner:
             torch.cuda.manual_seed(self.seed)
             torch.cuda.manual_seed_all(self.seed)
 
-            # refer to https://docs.nvidia.com/cuda/cublas/index.html#cublasApi_reproducibility
-            os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":4096:8"
-            torch.backends.cudnn.benchmark = False
-            torch.backends.cudnn.deterministic = True
-            torch.use_deterministic_algorithms(True)
-            # torch.set_deterministic_debug_mode("warn")
+            if USE_CPU:
+                # refer to https://docs.nvidia.com/cuda/cublas/index.html#cublasApi_reproducibility
+                os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":4096:8"
+                torch.backends.cudnn.benchmark = False
+                torch.backends.cudnn.deterministic = True
+                torch.use_deterministic_algorithms(True)  # raises runtime error if not deterministic
+                # torch.set_deterministic_debug_mode("warn")  # prints out warnings if not deterministic
 
         if self.load_check_point:
             print("Found checkpoint")
@@ -89,7 +92,8 @@ class Runner:
         return model_builder
 
     def run(self, args):
-        if "checkpoint" in args and args["checkpoint"] is not None:
+        if "checkpoint" in args and             self.set_train()
+args["checkpoint"] is not None:
             if len(args["checkpoint"]) > 0:
                 self.load_path = args["checkpoint"]
 
@@ -132,7 +136,26 @@ class Runner:
         if self.load_check_point and (self.load_path is not None):
             agent.restore(self.load_path)
 
-        agent.train()
+        if PROFILE:
+            # To count the function calls
+            import cProfile
+            import pstats
+            from pstats import SortKey
+
+            file_prefix = f"stats_{'rlg' if RUN_RLG else 'norlg'}.profile"
+            def agent_train():
+                agent.train()
+
+            profiler = cProfile.Profile()
+            profiler.runctx('agent_train()', globals(), locals())
+            profiler.dump_stats(file_prefix + ".profile")
+
+            with open(file_prefix + ".txt", "w") as f:
+                p = pstats.Stats(file_prefix + ".profile", stream=f)
+                p.sort_stats(SortKey.TIME).print_stats(200)
+
+        else:
+            agent.train()
 
 
 if __name__ == "__main__":
@@ -166,6 +189,9 @@ if __name__ == "__main__":
         )
         # args.motion_file = "ase/data/motions/reallusion_sword_shield/RL_Avatar_Atk_Jump_Motion.npy"
         args.headless = True
+
+        if PROFILE:
+            args.max_iterations = 10
 
     # Set the correct mode
     if args.test:

@@ -318,32 +318,42 @@ class ASEAgent(CommonAgent):
             self.epoch_num = epoch_num
 
             # Collect data
+            self.set_eval()
             start_time = time.time()
             with torch.no_grad():
                 batch_dict = self.play_steps()
             scaled_play_time = time.time() - start_time
 
             # Add amp obs
-            # self._update_amp_demos()
-            new_amp_obs_demo = self.task_env.fetch_amp_obs_demo(self._amp_batch_size)
-            self._amp_obs_demo_buffer.store({"amp_obs": new_amp_obs_demo})
-
             num_obs_samples = batch_dict["amp_obs"].shape[0]
+
+            self._update_amp_demos()
             amp_obs_demo = self._amp_obs_demo_buffer.sample(num_obs_samples)["amp_obs"]
             batch_dict["amp_obs_demo"] = amp_obs_demo
 
             if self._amp_replay_buffer.get_total_count() == 0:
-                batch_dict["amp_obs_replay"] = batch_dict["amp_obs"]
+                amp_obs_replay = batch_dict["amp_obs"]
             else:
                 amp_obs_replay = self._amp_replay_buffer.sample(num_obs_samples)["amp_obs"]
-                batch_dict["amp_obs_replay"] = amp_obs_replay
+            batch_dict["amp_obs_replay"] = amp_obs_replay
+
+            # xcxc debug -- amp obs buffers (norlg)
+            # print()
+            # print("amp_obs_demo", amp_obs_demo.sum())
+            # print("amp_obs_replay", amp_obs_replay.sum())
+            # print()
 
             # Update the model
             update_time_start = time.time()
             train_info = None
 
             self.curr_frames = batch_dict.pop("played_frames")
+
+            # NOTE: prepare_dataset normalizes returns/values, which need to be updated
+            # So these normalizers (self.value_mean_std) need to be in the training mode
+            self.set_train()
             self.prepare_dataset(batch_dict)
+
             for _ in range(0, self.mini_epochs_num):
                 for i in range(len(self.dataset)):
                     curr_train_info = self.calc_gradients(self.dataset[i])  # updating
@@ -413,8 +423,13 @@ class ASEAgent(CommonAgent):
         buffer_size = self._amp_obs_demo_buffer.get_buffer_size()
         num_batches = int(np.ceil(buffer_size / self._amp_batch_size))
         for _ in range(num_batches):
-            curr_samples = self.task_env.fetch_amp_obs_demo(self._amp_batch_size)
-            self._amp_obs_demo_buffer.store({"amp_obs": curr_samples})
+            self._update_amp_demos()
+            # curr_samples = self.task_env.fetch_amp_obs_demo(self._amp_batch_size)
+            # self._amp_obs_demo_buffer.store({"amp_obs": curr_samples})
+
+    def _update_amp_demos(self):
+        demos = self.task_env.fetch_amp_obs_demo(self._amp_batch_size)
+        self._amp_obs_demo_buffer.store({'amp_obs': demos})
 
     def _store_replay_amp_obs(self, amp_obs):
         buf_size = self._amp_replay_buffer.get_buffer_size()

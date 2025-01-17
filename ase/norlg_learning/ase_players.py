@@ -221,9 +221,11 @@ class CommonAgent:
         if done_env_ids is None:
             done_env_ids = self.all_env_ids
 
-        rand_vals = self._sample_latents(len(done_env_ids))
-        self._ase_latents[done_env_ids] = rand_vals
-        self._change_char_color(done_env_ids)
+        num_done = len(done_env_ids)
+        if num_done > 0:
+            rand_vals = self._sample_latents(num_done)
+            self._ase_latents[done_env_ids] = rand_vals
+            self._change_char_color(done_env_ids)
 
     def _sample_latents(self, num):
         return self.model.a2c_network.sample_latents(num)

@@ -224,10 +224,22 @@ class AMPAgent(common_agent.CommonAgent):
         amp_obs_demo = self._amp_obs_demo_buffer.sample(num_obs_samples)['amp_obs']
         batch_dict['amp_obs_demo'] = amp_obs_demo
 
-        if (self._amp_replay_buffer.get_total_count() == 0):
-            batch_dict['amp_obs_replay'] = batch_dict['amp_obs']
+        # Original code
+        # if (self._amp_replay_buffer.get_total_count() == 0):
+        #     batch_dict['amp_obs_replay'] = batch_dict['amp_obs']
+        # else:
+        #     batch_dict['amp_obs_replay'] = self._amp_replay_buffer.sample(num_obs_samples)['amp_obs']
+        if self._amp_replay_buffer.get_total_count() == 0:
+            amp_obs_replay = batch_dict["amp_obs"]
         else:
-            batch_dict['amp_obs_replay'] = self._amp_replay_buffer.sample(num_obs_samples)['amp_obs']
+            amp_obs_replay = self._amp_replay_buffer.sample(num_obs_samples)["amp_obs"]
+        batch_dict["amp_obs_replay"] = amp_obs_replay
+
+        # xcxc debug -- amp obs buffers (norlg)
+        # print()
+        # print("amp_obs_demo", amp_obs_demo.sum())
+        # print("amp_obs_replay", amp_obs_replay.sum())
+        # print()
 
         self.set_train()
 
@@ -565,7 +577,7 @@ class AMPAgent(common_agent.CommonAgent):
     def _update_amp_demos(self):
         new_amp_obs_demo = self._fetch_amp_obs_demo(self._amp_batch_size)
         self._amp_obs_demo_buffer.store({'amp_obs': new_amp_obs_demo})
-        return
+        return new_amp_obs_demo
 
     def _preproc_amp_obs(self, amp_obs):
         if self._normalize_amp_input:
