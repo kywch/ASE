@@ -10,8 +10,8 @@ dependencies = [
     "gym==0.23.1",
 ]
 
-[system-requirements]
-cuda = "12.1"
+# [system-requirements]
+# cuda = "12.1"
 
 [tool.setuptools]
 packages = ["ase"]
@@ -29,8 +29,8 @@ ruff = ">=0.6.2,<0.7"
 wandb = ">=0.16.6,<0.17"
 tyro = ">=0.8.14,<0.9"
 
-pytorch = "2.3.1"
-pytorch-cuda = "12.1"
+pytorch = "==2.3.1"
+pytorch-cuda = "==12.1"
 
 # isaacgym deps
 torchvision = ">=0.18.1,<0.19"

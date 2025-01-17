@@ -24,7 +24,7 @@ from ase.norlg_learning.utils import DefaultRewardsShaper, DefaultAlgoObserver
 from ase.utils.config import set_np_formatting, get_args, load_cfg
 
 
-RUN_RLG = True
+RUN_RLG = False
 RUN_EVAL = False
 WANDB_TRACK = False
 
@@ -156,9 +156,9 @@ if __name__ == "__main__":
         args.checkpoint = "test/Humanoid_40hr.pth"
 
     else:
-        # make the training deterministic
-        args.device = "cpu"
-        args.rl_device = "cpu"
+        # set cpu to make the training deterministic
+        # args.device = "cpu"
+        # args.rl_device = "cpu"
         args.motion_file = (
             "ase/data/motions/reallusion_sword_shield/dataset_reallusion_sword_shield.yaml"
         )

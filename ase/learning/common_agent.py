@@ -124,6 +124,9 @@ class CommonAgent(a2c_continuous.A2CAgent):
 
         self._init_train()
 
+        # MATCH xcxc debug -- init (rlg)
+        # print("obs", self.obs["obs"].sum())
+
         while True:
             epoch_num = self.update_epoch()
             train_info = self.train_epoch()

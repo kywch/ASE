@@ -80,6 +80,16 @@ class ASEAgent(amp_agent.AMPAgent):
             else:
                 res_dict = self.get_action_values(self.obs, self._ase_latents, self._rand_action_probs)
 
+            # MATCH xcxc debug -- play steps, get_action_values (rlg) 
+            # print("obs", self.obs["obs"].sum())
+            # print("ase latents", self._ase_latents.sum())
+            # print("rand action probs", self._rand_action_probs.sum())
+            # for k in res_dict.keys():
+            #     try:
+            #         print(k, res_dict[k].sum())
+            #     except:
+            #         pass
+
             for k in update_list:
                 self.experience_buffer.update_data(k, n, res_dict[k]) 
 
@@ -139,6 +149,10 @@ class ASEAgent(amp_agent.AMPAgent):
 
         for k, v in amp_rewards.items():
             batch_dict[k] = a2c_common.swap_and_flatten01(v)
+
+        # MATCH xcxc debug -- play steps (rlg)
+        # for k in ["amp_obs", "ase_latents", "returns", "disc_rewards", "enc_rewards"]:
+        #     print(k, batch_dict[k].sum())
 
         return batch_dict
 

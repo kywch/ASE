@@ -289,6 +289,13 @@ class AMPAgent(common_agent.CommonAgent):
         train_info['total_time'] = total_time
         self._record_train_batch_info(batch_dict, train_info)
 
+        # MATCH xcxc debug -- train epoch (rlg)
+        # for k in ["amp_diversity_loss", "disc_loss", "disc_agent_logit", "disc_rewards", "enc_rewards"]:
+        #     if isinstance(train_info[k], list):
+        #         print(k, torch.stack(train_info[k]).sum())
+        #     else:
+        #         print(k, train_info[k].sum())
+
         return train_info
 
     def calc_gradients(self, input_dict):

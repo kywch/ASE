@@ -77,8 +77,8 @@ class CommonAgent:
         self.max_steps = 108000 // 4
 
         # TODO: check device in config. For now, there is no device nor device_name
-        self.use_cuda = True
-        self.device_name = self.config.get("device_name", "cuda")
+        # self.use_cuda = True
+        self.device_name = self.config.get("device", "cuda")
         self.device = torch.device(self.device_name)
 
         # from rl_games.algos_torch.players import PpoPlayerContinuous

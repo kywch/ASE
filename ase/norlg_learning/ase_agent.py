@@ -245,6 +245,18 @@ class ASEAgent(CommonAgent):
             "ase_latents",
         ]
 
+    def env_reset(self, env_ids=None):
+        obs = super().env_reset(env_ids)
+
+        if env_ids is None:
+            env_ids = self.all_env_ids
+
+        if (len(env_ids) > 0):
+            self._reset_latents(env_ids)
+            self._reset_latent_step_count(env_ids)
+
+        return obs
+
     def _reset_latent_step_count(self, env_ids=None):
         if env_ids is None:
             env_ids = self.all_env_ids
@@ -297,6 +309,9 @@ class ASEAgent(CommonAgent):
 
         self._init_amp_demo_buf()
 
+        # MATCH xcxc debug -- init (norlg)
+        # print("obs", self.obs.sum())
+
         epoch_num = 0
         while True:
             epoch_num += 1
@@ -347,6 +362,13 @@ class ASEAgent(CommonAgent):
             train_info["update_time"] = time.time() - update_time_start
 
             self._store_replay_amp_obs(batch_dict["amp_obs"])
+
+            # MATCH xcxc debug -- train epoch (norlg)
+            # for k in ["amp_diversity_loss", "disc_loss", "disc_agent_logit", "disc_rewards", "enc_rewards"]:
+            #     if isinstance(train_info[k], list):
+            #         print(k, torch.stack(train_info[k]).sum())
+            #     else:
+            #         print(k, train_info[k].sum())
 
             # Log the stats
             sum_time = time.time() - start_time
@@ -517,6 +539,16 @@ class ASEAgent(CommonAgent):
             for k in update_list:
                 self.experience_buffer.update_data(k, n, res_dict[k])
 
+            # MATCH xcxc debug -- play steps, get_action_values (norlg)
+            # print("obs", self.obs.sum())
+            # print("ase latents", self._ase_latents.sum())
+            # print("rand action probs", self._rand_action_probs.sum())
+            # for k in res_dict.keys():
+            #     try:
+            #         print(k, res_dict[k].sum())
+            #     except:
+            #         pass
+
             """Stepping the environment"""
             # self.obs, rewards, self.dones, infos = self.env_step(res_dict['actions'])
             self.obs, rewards, self.dones, infos = self.env.step(res_dict["actions"])
@@ -581,6 +613,10 @@ class ASEAgent(CommonAgent):
 
         for k, v in amp_rewards.items():
             batch_dict[k] = swap_and_flatten01(v)
+
+        # MATCH xcxc debug -- play steps (norlg)
+        # for k in ["amp_obs", "ase_latents", "returns", "disc_rewards", "enc_rewards"]:
+        #     print(k, batch_dict[k].sum())
 
         return batch_dict
 
