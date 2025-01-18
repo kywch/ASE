@@ -35,9 +35,10 @@ import gymtorch
 from isaacgym import gymapi
 from isaacgym.torch_utils import *
 
-from utils import torch_utils
+from ase import ASE_ROOT
+from ase.utils import torch_utils
+from ase.env.tasks.base_task import BaseTask
 
-from env.tasks.base_task import BaseTask
 
 class Humanoid(BaseTask):
     def __init__(self, cfg, sim_params, physics_engine, device_type, device_id, headless):
@@ -254,7 +255,7 @@ class Humanoid(BaseTask):
         asset_root = self.cfg["env"]["asset"]["assetRoot"]
         asset_file = self.cfg["env"]["asset"]["assetFileName"]
 
-        asset_path = os.path.join(asset_root, asset_file)
+        asset_path = os.path.join(f"{ASE_ROOT}/{asset_root}", asset_file)
         asset_root = os.path.dirname(asset_path)
         asset_file = os.path.basename(asset_path)
 

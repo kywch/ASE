@@ -26,17 +26,17 @@
 # OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-import torch
-
 from isaacgym import gymapi
 # from isaacgym import gymtorch
 import gymtorch
 
-from env.tasks.humanoid_amp import HumanoidAMP
+import torch
+
+from ase.env.tasks.humanoid_amp import HumanoidAMP
 from isaacgym.torch_utils import *
 
-from utils import torch_utils
-from utils import gym_util
+# from utils import torch_utils
+# from utils import gym_util
 
 
 class HumanoidAMPGetup(HumanoidAMP):

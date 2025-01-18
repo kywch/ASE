@@ -26,16 +26,16 @@
 # OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-from learning import amp_agent 
+from ase.learning import amp_agent 
 
 import torch
 from isaacgym.torch_utils import *
 from rl_games.algos_torch import torch_ext
 from rl_games.common import a2c_common
-from rl_games.algos_torch.running_mean_std import RunningMeanStd
+# from rl_games.algos_torch.running_mean_std import RunningMeanStd
 
-from utils import torch_utils
-from learning import ase_network_builder
+# from utils import torch_utils
+# from learning import ase_network_builder
 
 class ASEAgent(amp_agent.AMPAgent):
     def __init__(self, base_name, config):

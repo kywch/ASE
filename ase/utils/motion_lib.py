@@ -30,11 +30,12 @@ import numpy as np
 import os
 import yaml
 
-from poselib.poselib.skeleton.skeleton3d import SkeletonMotion
-from poselib.poselib.core.rotation3d import *
+# TODO: isolate poselib
+from ase.poselib.poselib.skeleton.skeleton3d import SkeletonMotion
+from ase.poselib.poselib.core.rotation3d import *
 from isaacgym.torch_utils import *
 
-from utils import torch_utils
+from ase.utils import torch_utils
 
 import torch
 

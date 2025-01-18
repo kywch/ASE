@@ -15,7 +15,7 @@ import tyro
 from torch.distributions.normal import Normal
 from torch.utils.tensorboard import SummaryWriter
 
-from cleanrl.env import make_env
+from ase.cleanrl.env import make_env
 
 
 DEBUG = False
