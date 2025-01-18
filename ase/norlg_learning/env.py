@@ -1,6 +1,7 @@
 import numpy as np
 
 from ase.env.tasks.humanoid_amp_getup import HumanoidAMPGetup
+from ase.env.tasks.humanoid_perturb import HumanoidPerturb
 from ase.env.tasks.vec_task_wrappers import VecTaskPythonWrapper
 from ase.utils.config import parse_sim_params
 
@@ -22,6 +23,7 @@ def create_rlgpu_env(args, cfg, cfg_train, **kwargs):
 
     # NOTE: Start with training low-level controller, HumanoidAMPGetup
     try:
+        # task = HumanoidPerturb(  # for testing policy with flying boxes
         task = HumanoidAMPGetup(
             cfg=cfg,
             sim_params=sim_params,

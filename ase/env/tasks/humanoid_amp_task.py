@@ -28,7 +28,7 @@
 
 import torch
 
-import env.tasks.humanoid_amp as humanoid_amp
+import ase.env.tasks.humanoid_amp as humanoid_amp
 
 class HumanoidAMPTask(humanoid_amp.HumanoidAMP):
     def __init__(self, cfg, sim_params, physics_engine, device_type, device_id, headless):

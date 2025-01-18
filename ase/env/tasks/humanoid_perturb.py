@@ -32,11 +32,11 @@ import gymtorch
 from isaacgym import gymapi
 from isaacgym.torch_utils import *
 
-import env.tasks.humanoid_amp as humanoid_amp
-import env.tasks.humanoid_amp_getup as humanoid_amp_getup
-import env.tasks.humanoid_strike as humanoid_strike
-import env.tasks.humanoid_location as humanoid_location
-from utils import torch_utils
+import ase.env.tasks.humanoid_amp as humanoid_amp
+import ase.env.tasks.humanoid_amp_getup as humanoid_amp_getup
+import ase.env.tasks.humanoid_strike as humanoid_strike
+import ase.env.tasks.humanoid_location as humanoid_location
+# from utils import torch_utils
 
 PERTURB_OBJS = [
     ["small", 60],
